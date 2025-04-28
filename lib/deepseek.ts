@@ -20,7 +20,10 @@ const transformStream = (response: Response) => {
 
   return new ReadableStream({
     async start(controller) {
-      if (!reader) return controller.close()
+      if (!reader) {
+        controller.error(new Error("Response body is null"))
+        return
+      }
 
       try {
         while (true) {
@@ -96,32 +99,37 @@ export async function callDeepSeekAPI(messages: Message[], systemPrompt: string)
     messages: deepseekMessages,
     stream: true,
     temperature: 0.7,
-    max_tokens: 4096,
+    max_tokens: 2048,
   }
 
-  // Call DeepSeek API
-  const response = await fetch("https://api.deepseek.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(payload),
-  })
+  try {
+    // Call DeepSeek API
+    const response = await fetch("https://api.deepseek.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(payload),
+    })
 
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(`DeepSeek API error: ${response.status} ${errorText}`)
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`DeepSeek API error: ${response.status} ${errorText}`)
+    }
+
+    // Transform the stream to match AI SDK's format
+    const transformedStream = transformStream(response)
+
+    return new Response(transformedStream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
+    })
+  } catch (error) {
+    console.error("Error calling DeepSeek API:", error)
+    throw error
   }
-
-  // Transform the stream to match AI SDK's format
-  const transformedStream = transformStream(response)
-
-  return new Response(transformedStream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-    },
-  })
 }
