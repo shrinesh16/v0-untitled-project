@@ -5,36 +5,70 @@ import { useChat } from "ai/react"
 import { ChatMessage } from "@/components/chat-message"
 import { ChatInput } from "@/components/chat-input"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { EnvChecker } from "@/components/env-checker"
 import { Trash2, AlertCircle, RefreshCw, Info } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 export default function Home() {
   const [error, setError] = useState<string | null>(null)
-  const [activeService, setActiveService] = useState<string>("loading")
+  const [apiStatus, setApiStatus] = useState<{
+    openai: boolean
+    deepseek: boolean
+    fallbackActive: boolean
+  }>({
+    openai: false,
+    deepseek: false,
+    fallbackActive: false,
+  })
+  const [selectedModel, setSelectedModel] = useState<string>("openai")
 
   useEffect(() => {
-    // Check which service is active
-    const checkActiveService = async () => {
+    // Check API status
+    const checkApiStatus = async () => {
       try {
         const response = await fetch("/api/health")
         if (response.ok) {
           const data = await response.json()
-          setActiveService(data.activeService || "none")
-        } else {
-          setActiveService("none")
+
+          const openaiConfigured = data.services?.openai === "configured"
+          const deepseekConfigured = data.services?.deepseek === "configured"
+
+          setApiStatus({
+            openai: openaiConfigured,
+            deepseek: deepseekConfigured,
+            fallbackActive: !openaiConfigured && !deepseekConfigured,
+          })
+
+          // Set default model based on availability
+          if (openaiConfigured) {
+            setSelectedModel("openai")
+          } else if (deepseekConfigured) {
+            setSelectedModel("deepseek")
+          }
+
+          // Log API status for debugging
+          console.log("API Status:", data)
         }
       } catch (error) {
-        console.error("Error checking active service:", error)
-        setActiveService("none")
+        console.error("Error checking API status:", error)
+        setApiStatus({
+          openai: false,
+          deepseek: false,
+          fallbackActive: true,
+        })
       }
     }
 
-    checkActiveService()
+    checkApiStatus()
   }, [])
 
   const { messages, isLoading, append, reload, setMessages } = useChat({
     api: "/api/chat",
+    body: {
+      model: selectedModel,
+    },
     onError: (error) => {
       console.error("Chat error:", error)
       setError(`Error: ${error.message || "Failed to communicate with AI service. Please try again."}`)
@@ -60,17 +94,17 @@ export default function Home() {
   }
 
   const getModelName = () => {
-    switch (activeService) {
+    if (apiStatus.fallbackActive) {
+      return "Fallback Mode"
+    }
+
+    switch (selectedModel) {
       case "openai":
         return "OpenAI GPT-4o"
       case "deepseek":
         return "DeepSeek Coder"
-      case "demo":
-        return "Demo Mode"
-      case "none":
-        return "No AI service available"
       default:
-        return "Loading..."
+        return "Unknown Model"
     }
   }
 
@@ -96,25 +130,43 @@ export default function Home() {
       </header>
 
       <main className="flex-1 container mx-auto px-4 py-8 max-w-4xl">
-        {activeService === "demo" && (
-          <Alert className="mb-4 bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800">
-            <Info className="h-4 w-4 text-blue-800 dark:text-blue-200" />
-            <AlertDescription className="text-blue-800 dark:text-blue-200">
-              <strong>Demo Mode Active:</strong> Both OpenAI (quota exceeded) and DeepSeek (insufficient balance) are
-              unavailable. Using simulated responses for demonstration purposes.
+        <EnvChecker />
+
+        {apiStatus.fallbackActive && (
+          <Alert className="mb-4 bg-yellow-50 dark:bg-yellow-900/30 border-yellow-200 dark:border-yellow-800">
+            <Info className="h-4 w-4 text-yellow-800 dark:text-yellow-200" />
+            <AlertTitle className="text-yellow-800 dark:text-yellow-200">Fallback Mode Active</AlertTitle>
+            <AlertDescription className="text-yellow-800 dark:text-yellow-200">
+              Both OpenAI and DeepSeek API keys appear to be invalid or missing. The system is running in fallback mode
+              with limited functionality.
             </AlertDescription>
           </Alert>
         )}
 
         <div className="flex flex-col h-full">
           <div className="mb-6 flex items-center justify-between">
-            <div className="text-sm text-zinc-500 dark:text-zinc-400">
-              Using {getModelName()} for code optimization
-              {activeService === "demo" && (
-                <span className="ml-2 text-xs bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 px-2 py-0.5 rounded-full">
-                  Limited functionality
-                </span>
-              )}
+            <div className="flex items-center gap-4">
+              <Select value={selectedModel} onValueChange={setSelectedModel} disabled={apiStatus.fallbackActive}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Select Model" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="openai" disabled={!apiStatus.openai}>
+                    OpenAI GPT-4o
+                  </SelectItem>
+                  <SelectItem value="deepseek" disabled={!apiStatus.deepseek}>
+                    DeepSeek Coder
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <span className="text-sm text-zinc-500 dark:text-zinc-400">
+                Using {getModelName()} for code optimization
+                {apiStatus.fallbackActive && (
+                  <span className="ml-2 text-xs bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 px-2 py-0.5 rounded-full">
+                    Limited functionality
+                  </span>
+                )}
+              </span>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-sm text-zinc-500 dark:text-zinc-400">{isLoading ? "Processing..." : "Ready"}</span>
@@ -142,11 +194,11 @@ export default function Home() {
                 <p className="text-zinc-600 dark:text-zinc-400 max-w-md">
                   Paste your code or ask questions about code optimization, bug fixing, and best practices.
                 </p>
-                {activeService === "demo" && (
-                  <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/30 rounded-lg max-w-md">
-                    <p className="text-blue-800 dark:text-blue-200 text-sm">
-                      <strong>Note:</strong> Demo mode is active due to API limitations. Responses are simulated and may
-                      not provide actual code optimization.
+                {apiStatus.fallbackActive && (
+                  <div className="mt-4 p-4 bg-yellow-50 dark:bg-yellow-900/30 rounded-lg max-w-md">
+                    <p className="text-yellow-800 dark:text-yellow-200 text-sm">
+                      <strong>Note:</strong> Fallback mode is active due to API key issues. Responses are simulated and
+                      may not provide actual code optimization. Please check your API keys.
                     </p>
                   </div>
                 )}

@@ -29,7 +29,7 @@ ${code.trim()}
 // In a real API response, specific improvements would be made
 \`\`\`
 
-**Note**: This is a demo response as both OpenAI and DeepSeek APIs are currently unavailable. Please try again later when the services are restored.`
+**Note**: This is a fallback response as both OpenAI and DeepSeek APIs are currently unavailable. Please check your API keys and try again later.`
   } else {
     // If no code blocks, generate a general response
     return `Thank you for your question about code optimization.
@@ -45,6 +45,6 @@ function example() {
 }
 \`\`\`
 
-**Note**: This is a demo response as both OpenAI and DeepSeek APIs are currently unavailable. Please try again later when the services are restored.`
+**Note**: This is a fallback response as both OpenAI and DeepSeek APIs are currently unavailable. Please check your API keys and try again later.`
   }
 }
